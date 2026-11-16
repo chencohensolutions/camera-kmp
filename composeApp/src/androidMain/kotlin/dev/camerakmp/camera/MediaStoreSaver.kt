@@ -71,10 +71,10 @@ internal class MediaStoreSaver(private val context: Context) {
         return uri
     }
 
-    /** HDR extension output in YUV, compressed exactly once to HEIC with the hardware HEVC encoder. */
-    fun saveYuvAsHeic(image: Image, rotationDegrees: Int, quality: Int = 95): Uri {
+    /** YUV (HDR extension output, or full-size YUV when there is no native HEIC stream), compressed exactly once to HEIC with the hardware HEVC encoder. */
+    fun saveYuvAsHeic(image: Image, rotationDegrees: Int, prefix: String, quality: Int = 100): Uri {
         require(image.format == ImageFormat.YUV_420_888)
-        val tmp = File(context.cacheDir, "${newName("HDR")}.heic")
+        val tmp = File(context.cacheDir, "${newName(prefix)}.heic")
         val writer = HeifWriter.Builder(tmp.absolutePath, image.width, image.height, HeifWriter.INPUT_MODE_BUFFER)
             .setRotation(rotationDegrees)
             .setQuality(quality)

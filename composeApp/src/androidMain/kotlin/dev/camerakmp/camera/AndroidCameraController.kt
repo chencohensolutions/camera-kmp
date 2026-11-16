@@ -601,7 +601,7 @@ class AndroidCameraController(private val context: Context) : CameraController {
         val result = withTimeoutOrNull(3_000) { resultDeferred.await() }
         try {
             val uri = withContext(Dispatchers.IO) {
-                if (image.format == ImageFormat.YUV_420_888) saver.saveYuvAsHeic(image, orientation)
+                if (image.format == ImageFormat.YUV_420_888) saver.saveYuvAsHeic(image, orientation, prefix = if (ext != null) "HDR" else "IMG")
                 else saver.saveEncoded(image, format.extension, format.mime)
             }
             val summary = InfoSection("Capture", listOfNotNull(
