@@ -59,6 +59,8 @@ data class InfoSection(val title: String, val entries: List<Pair<String, String>
 data class CameraOptions(
     val cameraId: String,
     val photoFormats: List<PhotoFormat>,
+    /** HEIC is made by capturing YUV and encoding it once with the HEIC/HEVC encoder (no native HEIC stream). */
+    val heicFromYuv: Boolean,
     val rawSupported: Boolean,
     val hdrExtensionSupported: Boolean,
     /** Extension output formats usable for HDR stills (subset of JPEG / HEIC-from-YUV / JPEG_R). */

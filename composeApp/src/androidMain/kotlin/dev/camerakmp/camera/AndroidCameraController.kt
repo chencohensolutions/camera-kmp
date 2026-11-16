@@ -484,9 +484,11 @@ class AndroidCameraController(private val context: Context) : CameraController {
         val format = if (s.photoFormat in opts.photoFormats) s.photoFormat else opts.photoFormats.first()
         val chars = streamChars() ?: return
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-        val photoSize = map.getOutputSizes(format.imageFormat())?.maxByOrNull { it.width * it.height }
+        // HEIC without a native stream: full-size YUV, encoded once to HEIC after capture.
+        val streamFormat = if (format == PhotoFormat.HEIC && opts.heicFromYuv) ImageFormat.YUV_420_888 else format.imageFormat()
+        val photoSize = map.getOutputSizes(streamFormat)?.maxByOrNull { it.width * it.height }
             ?: error("${format.label} not available on this lens")
-        val reader = ImageReader.newInstance(photoSize.width, photoSize.height, format.imageFormat(), 2)
+        val reader = ImageReader.newInstance(photoSize.width, photoSize.height, streamFormat, 2)
         photoReader = reader
         activePhotoFormat = format
 
@@ -603,7 +605,7 @@ class AndroidCameraController(private val context: Context) : CameraController {
                 else saver.saveEncoded(image, format.extension, format.mime)
             }
             val summary = InfoSection("Capture", listOfNotNull(
-                "Format" to (if (image.format == ImageFormat.YUV_420_888) "HEIC (encoded once from HDR YUV)" else format.label),
+                "Format" to (if (image.format == ImageFormat.YUV_420_888) "HEIC (YUV encoded once by the HEIC encoder)" else format.label),
                 "Size" to "${image.width}x${image.height}",
                 "HDR" to if (ext != null) "On (Samsung HDR extension)" else "Off",
                 "Lens" to (lens()?.label ?: "?"),

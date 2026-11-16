@@ -62,6 +62,12 @@ internal class CapabilityScanner(
         return DeviceCapabilities(deviceName, lenses, cameras, video, dump)
     }
 
+    private fun hasHeicEncoder(): Boolean = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
+        info.isEncoder && info.supportedTypes.any {
+            it.equals("image/vnd.android.heic", true) || it.equals("video/hevc", true)
+        }
+    }
+
     /** A dump section that fails shows its error instead of failing the whole scan. */
     private fun safeSection(title: String, build: () -> InfoSection): InfoSection =
         runCatching(build).getOrElse { InfoSection(title, listOf("error" to (it.message ?: it.toString()))) }
@@ -77,9 +83,12 @@ internal class CapabilityScanner(
         val formats = map?.outputFormats?.toSet().orEmpty()
         val caps = ch.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)?.toSet().orEmpty()
 
+        // Samsung's HAL reports android.heic.info.supported = false, so there is no native HEIC stream.
+        // Like Samsung's own camera app, we then capture YUV and encode it once with the HEIC encoder.
+        val heicFromYuv = ImageFormat.HEIC !in formats && ImageFormat.YUV_420_888 in formats && hasHeicEncoder()
         val photoFormats = buildList {
             if (Build.VERSION.SDK_INT >= 36 && ImageFormat.HEIC_ULTRAHDR in formats) add(PhotoFormat.HEIC_ULTRAHDR)
-            if (ImageFormat.HEIC in formats) add(PhotoFormat.HEIC)
+            if (ImageFormat.HEIC in formats || heicFromYuv) add(PhotoFormat.HEIC)
             if (ImageFormat.JPEG_R in formats) add(PhotoFormat.JPEG_R)
             if (ImageFormat.JPEG in formats) add(PhotoFormat.JPEG)
         }
@@ -103,6 +112,7 @@ internal class CapabilityScanner(
         return CameraOptions(
             cameraId = id,
             photoFormats = photoFormats,
+            heicFromYuv = heicFromYuv,
             rawSupported = CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW in caps && ImageFormat.RAW_SENSOR in formats,
             hdrExtensionSupported = hdr && hdrFormats.isNotEmpty(),
             hdrPhotoFormats = hdrFormats,
