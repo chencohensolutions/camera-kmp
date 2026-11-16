@@ -38,12 +38,12 @@ internal class CapabilityScanner(
             for (pid in physical) {
                 val pch = runCatching { manager.getCameraCharacteristics(pid) }.getOrNull() ?: continue
                 lenses += LensInfo(id, pid, "$facing lens $pid (inside camera $id) · ${focalText(pch)}")
-                dump += characteristicsSection("Physical lens $pid (of camera $id)", pch)
+                dump += safeSection("Physical lens $pid") { characteristicsSection("Physical lens $pid (of camera $id)", pch) }
             }
             cameras[id] = options(id, ch)
-            dump += characteristicsSection("Camera $id · $facing", ch)
-            dump += keysSection(id, ch)
-            dump += extensionSection(id)
+            dump += safeSection("Camera $id · $facing") { characteristicsSection("Camera $id · $facing", ch) }
+            dump += safeSection("Camera $id keys") { keysSection(id, ch) }
+            dump += safeSection("Camera $id extensions") { extensionSection(id) }
         }
 
         val mainBack = ids.firstOrNull {
@@ -52,7 +52,7 @@ internal class CapabilityScanner(
         val video = videoValidator.validate(manager.getCameraCharacteristics(mainBack)) { msg, p ->
             progress(msg, 0.1f + p * 0.9f)
         }
-        dump += encoderSection()
+        dump += safeSection("Encoders") { encoderSection() }
         dump += InfoSection(
             "Validated video configurations (camera $mainBack)",
             video.map { "${it.codec.label} ${it.sizeLabel}@${it.fps}" to "${it.encoderName}${if (it.hardware) " (hw)" else " (sw)"} · ${it.bitrates.first()}–${it.bitrates.last()} bps" },
@@ -61,6 +61,10 @@ internal class CapabilityScanner(
         val deviceName = "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
         return DeviceCapabilities(deviceName, lenses, cameras, video, dump)
     }
+
+    /** A dump section that fails shows its error instead of failing the whole scan. */
+    private fun safeSection(title: String, build: () -> InfoSection): InfoSection =
+        runCatching(build).getOrElse { InfoSection(title, listOf("error" to (it.message ?: it.toString()))) }
 
     private fun focalText(ch: CameraCharacteristics): String {
         val focal = ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.joinToString("/") { "%.2f".format(it) }
@@ -139,10 +143,20 @@ internal class CapabilityScanner(
 
     private fun keysSection(id: String, ch: CameraCharacteristics): InfoSection {
         val entries = mutableListOf<Pair<String, String>>()
-        ch.availableCaptureRequestKeys.sortedBy { it.name }.forEach { entries += "request" to it.name }
-        ch.availableCaptureResultKeys.sortedBy { it.name }.forEach { entries += "result" to it.name }
-        ch.availableSessionKeys.sortedBy { it.name }.forEach { entries += "session" to it.name }
-        ch.availablePhysicalCameraRequestKeys.sortedBy { it.name }.forEach { entries += "physical request" to it.name }
+        // Camera2 returns null (not an empty list) for some of these, e.g. physical keys on a non-multi-camera.
+        fun add(label: String, keys: List<*>?) =
+            keys.orEmpty().mapNotNull {
+                when (it) {
+                    is android.hardware.camera2.CaptureRequest.Key<*> -> it.name
+                    is android.hardware.camera2.CaptureResult.Key<*> -> it.name
+                    else -> it?.toString()
+                }
+            }
+                .sorted().forEach { entries += label to it }
+        add("request", ch.availableCaptureRequestKeys as List<*>?)
+        add("result", ch.availableCaptureResultKeys as List<*>?)
+        add("session", ch.availableSessionKeys as List<*>?)
+        add("physical request", ch.availablePhysicalCameraRequestKeys as List<*>?)
         return InfoSection("Camera $id controllable and reported keys", entries)
     }
 
